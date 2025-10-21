@@ -14,26 +14,12 @@ typedef BsItemBuilder<T> =
     );
 
 class BsSearchDelegate<T> extends SearchDelegate<T?> {
-  BsSearchDelegate({
-    required BsSearchArgs<T> args,
-    required BsSearchController<T> controller,
-    required BsItemBuilder<T> itemBuilder,
-    this.onItemSelected,
-  }) : _args = args,
-       _controller = controller,
-       _itemBuilder = itemBuilder {
-    _debouncer = BsDebouncer<String>(duration: _args.debouncerDuration);
-  }
+  BsSearchDelegate({required this.args});
 
-  final BsSearchArgs<T> _args;
-  final BsSearchController<T> _controller;
-  final BsItemBuilder<T> _itemBuilder;
-  final void Function(T item)? onItemSelected;
-
-  late final BsDebouncer<String> _debouncer;
+  final BsSearchArgs<T> args;
 
   @override
-  String? get searchFieldLabel => _args.searchLabel;
+  String? get searchFieldLabel => args.searchLabel;
 
   @override
   List<Widget>? buildActions(BuildContext context) {
@@ -41,7 +27,7 @@ class BsSearchDelegate<T> extends SearchDelegate<T?> {
       IconButton(
         onPressed: () {
           query = '';
-          _args.onClear?.call();
+          args.onClear?.call();
         },
         icon: const Icon(Icons.clear),
       ),
@@ -52,7 +38,7 @@ class BsSearchDelegate<T> extends SearchDelegate<T?> {
   Widget buildLeading(BuildContext context) {
     return IconButton(
       onPressed: () {
-        _args.onBack?.call();
+        args.onBack?.call();
         close(context, null);
       },
       icon: const Icon(Icons.arrow_back),
@@ -68,86 +54,87 @@ class BsSearchDelegate<T> extends SearchDelegate<T?> {
       return _emptyContainer();
     }
 
-    _scheduleQuery(context, query);
+    unawaited(args.controller.onQueryChanged(context, query));
 
-    return StreamBuilder<List<T>>(
-      stream: _controller.suggestionsStream,
-      builder: (BuildContext _, AsyncSnapshot<List<T>> snapshot) {
-        if (!snapshot.hasData) {
-          return _emptyContainer();
-        }
+    return ValueListenableBuilder<BsSearchState>(
+      valueListenable: args.controller.state,
+      builder: (_, BsSearchState state, __) {
+        switch (state) {
+          case BsSearchState.idle:
+            return _emptyContainer();
 
-        final List<T> items = snapshot.data!;
-        if (items.isEmpty) {
-          return _emptyContainer();
-        }
+          case BsSearchState.loading:
+            return args.shimmerBuilder?.call(context) ?? const BsSkeletonList();
 
-        return ListView.builder(
-          itemCount: items.length,
-          itemBuilder: (BuildContext _, int index) {
-            final T item = items[index];
-            final bool isLast = index == items.length - 1;
+          case BsSearchState.error:
+            return args.errorBuilder?.call(context, () {
+                  unawaited(args.controller.retryLastQuery(context));
+                }) ??
+                BsErrorView(
+                  message: 'Ocurrió un error al cargar los resultados.',
+                  onRetry: () =>
+                      unawaited(args.controller.retryLastQuery(context)),
+                );
 
-            return GestureDetector(
-              onTap: onItemSelected == null
-                  ? null
-                  : () => onItemSelected!(item),
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                children: <Widget>[
-                  _itemBuilder(
-                    context,
-                    item,
-                    index,
-                    isLast,
-                    _controller.isLoadingNextPage,
-                  ),
-                  if (_controller.isLoadingNextPage && isLast)
-                    const Padding(
-                      padding: EdgeInsets.all(BsSpacing.SPACE_MEDIUM),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                ],
-              ),
+          case BsSearchState.success:
+            return StreamBuilder<List<T>>(
+              stream: args.controller.suggestionsStream,
+              initialData: const <Never>[],
+              builder: (_, AsyncSnapshot<List<T>> snapshot) {
+                final List<T> items = snapshot.data ?? <T>[];
+                if (items.isEmpty) {
+                  return _emptyContainer();
+                }
+
+                return ListView.builder(
+                  itemCount: items.length,
+                  itemBuilder: (_, int index) {
+                    final T item = items[index];
+                    final bool isLast = index == items.length - 1;
+
+                    return GestureDetector(
+                      onTap: args.onItemSelected == null
+                          ? null
+                          : () => args.onItemSelected!(item),
+                      behavior: HitTestBehavior.opaque,
+                      child: Column(
+                        children: <Widget>[
+                          args.itemBuilder(
+                            context,
+                            item,
+                            index,
+                            args.controller.isLoadingNextPage,
+                            isLast,
+                          ),
+                          if (args.controller.isLoadingNextPage && isLast)
+                            const Padding(
+                              padding: EdgeInsets.all(BsSpacing.SPACE_MEDIUM),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
             );
-          },
-        );
+        }
       },
     );
   }
 
-  Widget _emptyContainer() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(BsSpacing.SPACE_LARGE),
-        child:
-            _args.emptyState ??
-            BsText(_args.emptySearchText, textAlign: TextAlign.center),
-      ),
-    );
-  }
-
-  void _scheduleQuery(BuildContext context, String query) {
-    _debouncer.value = '';
-    _debouncer.onValue = (String value) async {
-      await _controller.onQueryChanged(context, value);
-    };
-
-    final Timer timer = Timer.periodic(const Duration(milliseconds: 150), (_) {
-      _debouncer.value = query;
-    });
-
-    unawaited(
-      Future<void>.delayed(const Duration(milliseconds: 151)).then((_) {
-        timer.cancel();
-      }),
-    );
-  }
+  Widget _emptyContainer() => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(BsSpacing.SPACE_LARGE),
+      child:
+          args.emptyState ??
+          BsText(args.emptySearchText, textAlign: TextAlign.center),
+    ),
+  );
 
   @override
   void close(BuildContext context, T? result) {
-    _debouncer.dispose();
-    _controller.dispose();
+    args.controller.dispose();
     super.close(context, result);
   }
 }

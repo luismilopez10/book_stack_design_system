@@ -15,6 +15,8 @@ class BsColors {
   static const Color NEUTRAL_00 = Color(0xFFF5F5F5); // Light gray
   static const Color NEUTRAL_01 = Color(0xFF212121); // Soft black
   static const Color NEUTRAL_02 = Color(0xFFBDBDBD); // Medium gray
+  static const Color NEUTRAL_03 = Color(0xFF303030); // Dark gray
+  static const Color NEUTRAL_04 = Color(0xFF505050); // Light gray
 
   // State Colors
   static const Color SUCCESS = Color(0xFF4CAF50); // Green
@@ -22,5 +24,5 @@ class BsColors {
   static const Color WARNING = Color(0xFFFFC107); // Yellow
 
   // Custom Colors
-  static const Color HABANO = Color.fromARGB(255, 234, 229, 226); // Habano
+  static const Color HABANO = Color(0xFFEAE5E2); // Habano
 }
