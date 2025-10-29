@@ -50,10 +50,6 @@ class BsSearchDelegate<T> extends SearchDelegate<T?> {
 
   @override
   Widget buildSuggestions(BuildContext context) {
-    if (query.isEmpty) {
-      return _emptyContainer();
-    }
-
     unawaited(args.controller.onQueryChanged(context, query));
 
     return ValueListenableBuilder<BsSearchState>(
@@ -61,7 +57,7 @@ class BsSearchDelegate<T> extends SearchDelegate<T?> {
       builder: (_, BsSearchState state, __) {
         switch (state) {
           case BsSearchState.idle:
-            return _emptyContainer();
+            return const SizedBox.shrink();
 
           case BsSearchState.loading:
             return args.shimmerBuilder?.call(context) ?? const BsSkeletonList();
@@ -79,39 +75,57 @@ class BsSearchDelegate<T> extends SearchDelegate<T?> {
           case BsSearchState.success:
             return StreamBuilder<List<T>>(
               stream: args.controller.suggestionsStream,
-              initialData: const <Never>[],
+              initialData: <T>[],
               builder: (_, AsyncSnapshot<List<T>> snapshot) {
                 final List<T> items = snapshot.data ?? <T>[];
                 if (items.isEmpty) {
                   return _emptyContainer();
                 }
 
-                return ListView.builder(
-                  itemCount: items.length,
-                  itemBuilder: (_, int index) {
-                    final T item = items[index];
-                    final bool isLast = index == items.length - 1;
+                return ValueListenableBuilder<bool>(
+                  valueListenable: args.controller.isLoadingNextPageListenable,
+                  builder: (_, bool isLoadingNextPage, __) {
+                    return NotificationListener<ScrollNotification>(
+                      onNotification: (ScrollNotification notification) {
+                        if (notification.metrics.pixels >=
+                            notification.metrics.maxScrollExtent - 150) {
+                          unawaited(args.controller.loadMore());
+                        }
+                        return false;
+                      },
+                      child: ListView.builder(
+                        itemCount: items.length,
+                        itemBuilder: (_, int index) {
+                          final T item = items[index];
+                          final bool isLast = index == items.length - 1;
 
-                    return GestureDetector(
-                      onTap: args.onItemSelected == null
-                          ? null
-                          : () => args.onItemSelected!(item),
-                      behavior: HitTestBehavior.opaque,
-                      child: Column(
-                        children: <Widget>[
-                          args.itemBuilder(
-                            context,
-                            item,
-                            index,
-                            args.controller.isLoadingNextPage,
-                            isLast,
-                          ),
-                          if (args.controller.isLoadingNextPage && isLast)
-                            const Padding(
-                              padding: EdgeInsets.all(BsSpacing.SPACE_MEDIUM),
-                              child: Center(child: CircularProgressIndicator()),
+                          return GestureDetector(
+                            onTap: args.onItemSelected == null
+                                ? null
+                                : () => args.onItemSelected!(item),
+                            behavior: HitTestBehavior.opaque,
+                            child: Column(
+                              children: <Widget>[
+                                args.itemBuilder(
+                                  context,
+                                  item,
+                                  index,
+                                  isLoadingNextPage,
+                                  isLast,
+                                ),
+                                if (isLoadingNextPage && isLast)
+                                  const Padding(
+                                    padding: EdgeInsets.all(
+                                      BsSpacing.SPACE_MEDIUM,
+                                    ),
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  ),
+                              ],
                             ),
-                        ],
+                          );
+                        },
                       ),
                     );
                   },
